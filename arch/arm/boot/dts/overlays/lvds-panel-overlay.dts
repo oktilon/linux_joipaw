@@ -8,11 +8,24 @@
 	fragment@0 {
 		target-path = "/";
 		__overlay__ {
-			//#gpio-cells = <2>;
+
+            vdd_panel: fixedregulator {
+                regulator-boot-on;
+                compatible = "regulator-fixed";
+                regulator-name = "lvds27";
+                regulator-min-microvolt = <1800000>;
+                regulator-max-microvolt = <1800000>;
+                gpio = <&gpio 27 GPIO_ACTIVE_HIGH>;
+                startup-delay-us = <70000>;
+                enable-active-high;
+                vin-supply = <&vdd_3v3_reg>;
+            };
 
 			panel: panel {
-				compatible = "auo,g156xw01", "simple-panel";
-				power-supply = <&gpio 27 0>;
+				compatible = "auo,g156xw01";
+				label = "panel-auo";
+				status = "okay";
+				power-supply = <&vdd_panel>;
 
 				port {
 					panel_in_lvds: endpoint {
@@ -49,6 +62,9 @@
 			bridge@2c {
 				compatible = "ti,sn65dsi83";
 				reg = <0x2c>;
+				status = "okay";
+				power-supply = <&vdd_panel>;
+				enable-gpios = <&gpio 7 GPIO_ACTIVE_LOW>;  // LVDS_DIS
 
 				ports {
 					#address-cells = <1>;
@@ -57,6 +73,7 @@
 					port@0 {
 						reg = <0>;
 						bridge_in: endpoint {
+							data-lanes = <1 2 3 4>;
 							remote-endpoint = <&dsi_out_port>;
 						};
 					};
