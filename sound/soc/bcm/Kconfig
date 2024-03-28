@@ -295,3 +295,8 @@ config SND_DACBERRY400
 	select SND_SOC_TLV320AIC3X_I2C
 	help
 	  Say Y or M if you want to add support for tlv320aic3x add-on
+
+config SND_I2S_MICROPHONE_CARD
+	tristate "ASoC Simple sound card I2S Microphone RPi4 support"
+	help
+	  This option enables I2S microphone kernel module.
