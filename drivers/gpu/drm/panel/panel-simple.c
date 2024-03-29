@@ -559,7 +559,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	if (!panel)
 		return -ENOMEM;
 
-	printk("panel_simple_probe sz=%ld", sizeof(*panel));
+	dev_info(dev, "panel_simple_probe clk.typ=%d\n", desc->num_timings > 0 && desc->timings ? desc->timings->pixelclock.typ : 0);
 
 	panel->enabled = false;
 	panel->desc = desc;
@@ -568,11 +568,15 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 	if (IS_ERR(panel->supply))
 		return PTR_ERR(panel->supply);
 
+	dev_info(dev, "panel_simple_probe supply=%p\n", panel->supply);
+
 	panel->enable_gpio = devm_gpiod_get_optional(dev, "enable",
 						     GPIOD_OUT_LOW);
 	if (IS_ERR(panel->enable_gpio))
 		return dev_err_probe(dev, PTR_ERR(panel->enable_gpio),
 				     "failed to request GPIO\n");
+
+	dev_info(dev, "panel_simple_probe en_gpio=%p\n", panel->enable_gpio);
 
 	ddc = of_parse_phandle(dev->of_node, "ddc-i2c-bus", 0);
 	if (ddc) {
@@ -582,6 +586,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 		if (!panel->ddc)
 			return -EPROBE_DEFER;
 	}
+	dev_info(dev, "panel_simple_probe ddc=%p\n", ddc);
 
 	if (desc == &panel_dpi) {
 		/* Handle the generic panel-dpi binding */
@@ -668,6 +673,7 @@ static int panel_simple_probe(struct device *dev, const struct panel_desc *desc)
 		goto disable_pm_runtime;
 	}
 
+	dev_info(dev, "panel_simple_probe FIN\n");
 	drm_panel_add(&panel->base);
 
 	return 0;
@@ -1108,6 +1114,7 @@ static const struct display_timing auo_g156xw01_timings = {
 	.vfront_porch = { 0, 0, 0 },
 	.vback_porch = { 0, 0, 0 },
 	.vsync_len = { 10, 38, 120 },
+	.flags = DISPLAY_FLAGS_DE_HIGH,
 };
 
 static const struct panel_desc auo_g156xw01 = {
@@ -1126,6 +1133,7 @@ static const struct panel_desc auo_g156xw01 = {
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
 	.connector_type = DRM_MODE_CONNECTOR_LVDS,
+	.bus_flags = DRM_BUS_FLAG_DE_HIGH,
 };
 
 static const struct display_timing auo_g185han01_timings = {

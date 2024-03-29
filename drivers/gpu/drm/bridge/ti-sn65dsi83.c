@@ -35,6 +35,7 @@
 #include <linux/of_graph.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pinctrl/consumer.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
@@ -338,7 +339,7 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 	u16 val;
 	int ret;
 
-	printk("sn65dsi83_atomic_pre_enable");
+	dev_info(ctx->dev, "sn65dsi83_atomic_pre_enable\n");
 	ret = regulator_enable(ctx->vcc);
 	if (ret) {
 		dev_err(ctx->dev, "Failed to enable vcc: %d\n", ret);
@@ -389,7 +390,7 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 	crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
 	mode = &crtc_state->adjusted_mode;
 
-	printk("sn65dsi83_i2c_go");
+	dev_info(ctx->dev, "sn65dsi83_i2c_go\n");
 	/* Clear reset, disable PLL */
 	regmap_write(ctx->regmap, REG_RC_RESET, 0x00);
 	regmap_write(ctx->regmap, REG_RC_PLL_EN, 0x00);
@@ -411,6 +412,7 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 		     REG_DSI_LANE_CHB_DSI_LANES(3));
 	/* No equalization. */
 	regmap_write(ctx->regmap, REG_DSI_EQ, 0x00);
+	dev_info(ctx->dev, "sn65dsi83_i2c some data\n");
 
 	/* Set up sync signal polarity. */
 	val = (mode->flags & DRM_MODE_FLAG_NHSYNC ?
@@ -678,7 +680,7 @@ static int sn65dsi83_probe(struct i2c_client *client)
 	struct sn65dsi83 *ctx;
 	int ret;
 
-	printk("sn65dsi83_probe");
+	printk(KERN_INFO "sn65dsi83_probe");
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
