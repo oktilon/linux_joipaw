@@ -1,90 +1,178 @@
 /dts-v1/;
 /plugin/;
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/leds/common.h>
+#include <dt-bindings/pinctrl/bcm2835.h>
 
 / {
-	compatible = "brcm,bcm2835";
+    compatible = "brcm,bcm2835";
 
-	fragment@0 {
-		target-path = "/";
-		__overlay__ {
-
-            vdd_panel: fixedregulator {
-                regulator-boot-on;
-                compatible = "regulator-fixed";
-                regulator-name = "lvds27";
-                regulator-min-microvolt = <1800000>;
-                regulator-max-microvolt = <1800000>;
-                gpio = <&gpio 27 GPIO_ACTIVE_HIGH>;
-                startup-delay-us = <70000>;
-                enable-active-high;
-                vin-supply = <&vdd_3v3_reg>;
+    fragment@0 {
+        target = <&gpio>;
+        __overlay__ {
+            pwm_pins: pwm_pins {
+                brcm,pins = <12 13>;
+                brcm,function = <BCM2835_FSEL_ALT0 BCM2835_FSEL_ALT0>;
             };
 
-			panel: panel {
-				compatible = "auo,g156xw01";
-				label = "panel-auo";
-				status = "okay";
-				power-supply = <&vdd_panel>;
-
-				port {
-					panel_in_lvds: endpoint {
-						remote-endpoint = <&bridge_out>;
-					};
-				};
+			pin_state: button_pins@0 {
+				brcm,pins = <3>; // gpio number
+				brcm,function = <0>; // 0 = input, 1 = output
+				brcm,pull = <2>; // 0 = none, 1 = pull down, 2 = pull up
 			};
-		};
-	};
 
-	fragment@1 {
-		target = <&dsi1>;
-		__overlay__ {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			status = "okay";
-			port {
-				dsi_out_port: endpoint {
-					remote-endpoint = <&bridge_in>;
-					data-lanes = <0 1>;
-				};
-			};
-		};
-	};
+        };
+    };
 
-	fragment@2 {
-		target = <&i2c_csi_dsi>;
-		__overlay__ {
-			#gpio-cells = <2>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			status = "okay";
+    fragment@1 {
+        target = <&pwm>;
+        frag1: __overlay__ {
+            pinctrl-names = "default";
+            pinctrl-0 = <&pwm_pins>;
+            assigned-clock-rates = <100000000>;
+            status = "okay";
+        };
+    };
 
-			bridge@2c {
-				compatible = "ti,sn65dsi83";
-				reg = <0x2c>;
-				status = "okay";
-				enable-gpios = <&gpio 7 GPIO_ACTIVE_LOW>;  // LVDS_DIS
+    fragment@2 {
+        target-path = "/";
+        __overlay__ {
 
-				ports {
-					#address-cells = <1>;
-					#size-cells = <0>;
+            backlight_lvds: backlight {
+                compatible = "pwm-backlight";
+                pwms = <&pwm 0 100000 0>; /* Period of 100 000ns means 10 kHz */
+                brightness-levels = <0  1000>;
+                num-interpolated-steps = <1000>;
+                default-brightness-level = <100>;
+                enable-gpios = <&gpio 25 GPIO_ACTIVE_HIGH>; /* Backlight enable... */
+            };
 
-					port@0 {
-						reg = <0>;
-						bridge_in: endpoint {
-							data-lanes = <1 2 3 4>;
-							remote-endpoint = <&dsi_out_port>;
-						};
-					};
+            panel: panel {
+                compatible = "auo,g156xtn01";
+                label = "AUO:G156XW01";
+                status = "okay";
+                backlight = <&backlight_lvds>;
 
-					port@2 {
-						reg = <2>;
-						bridge_out: endpoint {
-							remote-endpoint = <&panel_in_lvds>;
-						};
-					};
-				};
-			};
-		};
-	};
+                port {
+                    panel_in_lvds: endpoint {
+                        remote-endpoint = <&bridge_out>;
+                    };
+                };
+            };
+
+            led-controller {
+                compatible = "pwm-leds";
+
+                led-1 {
+                    label = "front-led";
+                    color = <LED_COLOR_ID_GREEN>;
+                    pwms = <&pwm 1 100000 0>;
+                    max-brightness = <1000>;
+                };
+
+            };
+
+            run-control {
+                compatible = "gpio-leds";
+
+                led-0 {
+                    label = "back-led";
+                    gpios = <&gpio 23 GPIO_ACTIVE_HIGH>;
+                    color = <LED_COLOR_ID_GREEN>;
+                    default-state = "off";
+                };
+
+                led-1 {
+                    label = "mute-amplifier";
+                    gpios = <&gpio 26 GPIO_ACTIVE_LOW>;
+                    default-state = "off";
+                };
+
+                led-2 {
+                    label = "disable-i2c";
+                    gpios = <&gpio 22 GPIO_ACTIVE_HIGH>;
+                    default-state = "off";
+                };
+
+                led-3 {
+                    label = "power-panel";
+                    gpios = <&gpio 27 GPIO_ACTIVE_HIGH>;
+                    default-state = "on";
+                };
+
+                led-4 {
+                    label = "power-bl-12v";
+                    gpios = <&gpio 24 GPIO_ACTIVE_HIGH>;
+                    default-state = "on";
+                };
+            };
+
+        };
+    };
+
+    fragment@3 {
+        target = <&dsi1>;
+        __overlay__ {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+            port {
+                dsi_out_port: endpoint {
+                    remote-endpoint = <&bridge_in>;
+                    data-lanes = <0 1 2>;
+                };
+            };
+        };
+    };
+
+    fragment@4 {
+        target = <&i2c_csi_dsi>;
+        __overlay__ {
+            #gpio-cells = <2>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+            status = "okay";
+
+            bridge@2c {
+                compatible = "ti,sn65dsi83";
+                reg = <0x2c>;
+                status = "okay";
+                enable-gpios = <&gpio 7 GPIO_ACTIVE_LOW>;  // LVDS_DIS
+
+                ports {
+                    #address-cells = <1>;
+                    #size-cells = <0>;
+
+                    port@0 {
+                        reg = <0>;
+                        bridge_in: endpoint {
+                            data-lanes = <0 1 2>;
+                            remote-endpoint = <&dsi_out_port>;
+                        };
+                    };
+
+                    port@2 {
+                        reg = <2>;
+                        bridge_out: endpoint {
+                            remote-endpoint = <&panel_in_lvds>;
+                        };
+                    };
+                };
+            };
+        };
+    };
+
+    fragment@5 {
+        target = <&i2c0if>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
+
+    fragment@6 {
+        target = <&i2c0mux>;
+        __overlay__ {
+            status = "okay";
+        };
+    };
 };

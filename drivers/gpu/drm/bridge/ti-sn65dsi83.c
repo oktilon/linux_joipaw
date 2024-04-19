@@ -247,7 +247,7 @@ static int sn65dsi83_attach(struct drm_bridge *bridge,
 			    enum drm_bridge_attach_flags flags)
 {
 	struct sn65dsi83 *ctx = bridge_to_sn65dsi83(bridge);
-
+	dev_info(ctx->dev, "Attach: drm_bridge_attach\n");
 	return drm_bridge_attach(bridge->encoder, ctx->panel_bridge,
 				 &ctx->bridge, flags);
 }
@@ -304,9 +304,11 @@ static u8 sn65dsi83_get_dsi_range(struct sn65dsi83 *ctx,
 	 *  DSI_CLK = mode clock * bpp / dsi_data_lanes / 2
 	 * the 2 is there because the bus is DDR.
 	 */
-	return DIV_ROUND_UP(clamp((unsigned int)mode->clock *
+	u8 r = DIV_ROUND_UP(clamp((unsigned int)mode->clock *
 			    mipi_dsi_pixel_format_to_bpp(ctx->dsi->format) /
 			    ctx->dsi->lanes / 2, 40000U, 500000U), 5000U);
+	dev_info(ctx->dev, "DSI_CLK=%X (clk=%d, fmt=%d, lanes=%d, bpp=%d)\n", r, mode->clock, ctx->dsi->format, ctx->dsi->lanes, mipi_dsi_pixel_format_to_bpp(ctx->dsi->format));
+	return r;
 }
 
 static u8 sn65dsi83_get_dsi_div(struct sn65dsi83 *ctx)
@@ -320,6 +322,20 @@ static u8 sn65dsi83_get_dsi_div(struct sn65dsi83 *ctx)
 		dsi_div /= 2;
 
 	return dsi_div - 1;
+}
+
+static char *bin_format(unsigned char v) {
+	static char buf[9] = {0};
+	int i;
+	for(i = 0; i < 8; i++) {
+		if(v & (1 << (7-i))) {
+			buf[i] = '1';
+		} else {
+			buf[i] = '0';
+		}
+	}
+
+	return buf;
 }
 
 static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
@@ -339,30 +355,35 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 	u16 val;
 	int ret;
 
-	dev_info(ctx->dev, "sn65dsi83_atomic_pre_enable\n");
+	dev_info(ctx->dev, "Atomic PreEnable\n");
 	ret = regulator_enable(ctx->vcc);
 	if (ret) {
 		dev_err(ctx->dev, "Failed to enable vcc: %d\n", ret);
 		return;
 	}
 
+	// mipi_dsi_set_state(ctx->dsi, DSI_ACTIVE);
+
 	/* Deassert reset */
 	gpiod_set_value_cansleep(ctx->enable_gpio, 1);
-	usleep_range(10000, 11000);
+	usleep_range(340000, 350000);
 
 	/* Get the LVDS format from the bridge state. */
 	bridge_state = drm_atomic_get_new_bridge_state(state, bridge);
 
 	switch (bridge_state->output_bus_cfg.format) {
 	case MEDIA_BUS_FMT_RGB666_1X7X3_SPWG:
+		dev_info(ctx->dev, "Media bus fmt: RGB666_1x7x3 SPWG [24bpp=F, Jeida=T]\n");
 		lvds_format_24bpp = false;
 		lvds_format_jeida = true;
 		break;
 	case MEDIA_BUS_FMT_RGB888_1X7X4_JEIDA:
+		dev_info(ctx->dev, "Media bus fmt: RGB888_1x7x4 JEIDA [24bpp=T, Jeida=T]\n");
 		lvds_format_24bpp = true;
 		lvds_format_jeida = true;
 		break;
 	case MEDIA_BUS_FMT_RGB888_1X7X4_SPWG:
+		dev_info(ctx->dev, "Media bus fmt: RGB888_1x7x4 SPWG [24bpp=T, Jeida=F]\n");
 		lvds_format_24bpp = true;
 		lvds_format_jeida = false;
 		break;
@@ -390,7 +411,6 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 	crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
 	mode = &crtc_state->adjusted_mode;
 
-	dev_info(ctx->dev, "sn65dsi83_i2c_go\n");
 	/* Clear reset, disable PLL */
 	regmap_write(ctx->regmap, REG_RC_RESET, 0x00);
 	regmap_write(ctx->regmap, REG_RC_PLL_EN, 0x00);
@@ -410,9 +430,13 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 		     REG_DSI_LANE_CHA_DSI_LANES(~(ctx->dsi->lanes - 1)) |
 		     /* CHB is DSI85-only, set to default on DSI83/DSI84 */
 		     REG_DSI_LANE_CHB_DSI_LANES(3));
+	pval = REG_DSI_LANE_DSI_CHANNEL_MODE_SINGLE |
+		     REG_DSI_LANE_CHA_DSI_LANES(~(ctx->dsi->lanes - 1)) |
+		     /* CHB is DSI85-only, set to default on DSI83/DSI84 */
+		     REG_DSI_LANE_CHB_DSI_LANES(3);
+	dev_info(ctx->dev, "DSI_LANE(0x%02X)=0x%02X=[%s]\n", REG_DSI_LANE, pval, bin_format(pval));
 	/* No equalization. */
 	regmap_write(ctx->regmap, REG_DSI_EQ, 0x00);
-	dev_info(ctx->dev, "sn65dsi83_i2c some data\n");
 
 	/* Set up sync signal polarity. */
 	val = (mode->flags & DRM_MODE_FLAG_NHSYNC ?
@@ -439,12 +463,18 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 		val |= REG_LVDS_FMT_LVDS_LINK_CFG;
 
 	regmap_write(ctx->regmap, REG_LVDS_FMT, val);
+	dev_info(ctx->dev, "LVDS_FMT(0x%02X)=0x%02X=[%s]\n", REG_LVDS_FMT, val, bin_format(val));
 	regmap_write(ctx->regmap, REG_LVDS_VCOM, 0x05);
 	regmap_write(ctx->regmap, REG_LVDS_LANE,
 		     (ctx->lvds_dual_link_even_odd_swap ?
 		      REG_LVDS_LANE_EVEN_ODD_SWAP : 0) |
 		     REG_LVDS_LANE_CHA_LVDS_TERM |
 		     REG_LVDS_LANE_CHB_LVDS_TERM);
+	pval = (ctx->lvds_dual_link_even_odd_swap ?
+		      REG_LVDS_LANE_EVEN_ODD_SWAP : 0) |
+		     REG_LVDS_LANE_CHA_LVDS_TERM |
+		     REG_LVDS_LANE_CHB_LVDS_TERM;
+	dev_info(ctx->dev, "LVDS_LANE(0x%02X)=0x%02X=[%s]\n", REG_LVDS_LANE, pval, bin_format(pval));
 	regmap_write(ctx->regmap, REG_LVDS_CM, 0x00);
 
 	le16val = cpu_to_le16(mode->hdisplay);
@@ -470,7 +500,8 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 		     mode->hsync_start - mode->hdisplay);
 	regmap_write(ctx->regmap, REG_VID_CHA_VERTICAL_FRONT_PORCH,
 		     mode->vsync_start - mode->vdisplay);
-	regmap_write(ctx->regmap, REG_VID_CHA_TEST_PATTERN, 0x00);
+	regmap_write(ctx->regmap, REG_VID_CHA_TEST_PATTERN, 0x00); // 0x00 - Normal work, 0x10 - Test pattern
+
 
 	/* Enable PLL */
 	regmap_write(ctx->regmap, REG_RC_PLL_EN, REG_RC_PLL_EN_PLL_EN);
@@ -489,8 +520,10 @@ static void sn65dsi83_atomic_pre_enable(struct drm_bridge *bridge,
 	/* Trigger reset after CSR register update. */
 	regmap_write(ctx->regmap, REG_RC_RESET, REG_RC_RESET_SOFT_RESET);
 
+	dev_info(ctx->dev, "Soft reset\n");
 	/* Wait for 10ms after soft reset as specified in datasheet */
 	usleep_range(10000, 12000);
+	dev_info(ctx->dev, "Soft wait finished\n");
 }
 
 static void sn65dsi83_atomic_enable(struct drm_bridge *bridge,
@@ -499,6 +532,7 @@ static void sn65dsi83_atomic_enable(struct drm_bridge *bridge,
 	struct sn65dsi83 *ctx = bridge_to_sn65dsi83(bridge);
 	unsigned int pval;
 
+	dev_info(ctx->dev, "Reset IRQ stat\n");
 	/* Clear all errors that got asserted during initialization. */
 	regmap_read(ctx->regmap, REG_IRQ_STAT, &pval);
 	regmap_write(ctx->regmap, REG_IRQ_STAT, pval);
@@ -508,6 +542,7 @@ static void sn65dsi83_atomic_enable(struct drm_bridge *bridge,
 	regmap_read(ctx->regmap, REG_IRQ_STAT, &pval);
 	if (pval)
 		dev_err(ctx->dev, "Unexpected link status 0x%02x\n", pval);
+	dev_info(ctx->dev, "Bridge atomic enabled!\n");
 }
 
 static void sn65dsi83_atomic_disable(struct drm_bridge *bridge,
@@ -663,12 +698,20 @@ static int sn65dsi83_host_attach(struct sn65dsi83 *ctx)
 			  MIPI_DSI_MODE_VIDEO_NO_HFP | MIPI_DSI_MODE_VIDEO_NO_HBP |
 			  MIPI_DSI_MODE_VIDEO_NO_HSA | MIPI_DSI_MODE_NO_EOT_PACKET;
 
+
+	dev_info(dev, "Host[%s] type:[%s] try dsi_attach [lanes:%d, dsi:%s]\n"
+		, host->dev ? (host->dev->init_name ? host->dev->init_name : "--") : "no-host"
+		, dev->type ? (dev->type->name ? dev->type->name : "--") : "no-type"
+		, dsi_lanes
+		, dsi->name);
+
 	ret = devm_mipi_dsi_attach(dev, dsi);
 	if (ret < 0) {
 		dev_err(dev, "failed to attach dsi to host: %d\n", ret);
 		return ret;
 	}
 
+	dev_info(dev, "Host attach: DONE\n");
 	return 0;
 }
 
@@ -680,7 +723,7 @@ static int sn65dsi83_probe(struct i2c_client *client)
 	struct sn65dsi83 *ctx;
 	int ret;
 
-	printk(KERN_INFO "sn65dsi83_probe");
+	dev_info(dev, "Probe: begin\n");
 
 	ctx = devm_kzalloc(dev, sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
@@ -701,8 +744,9 @@ static int sn65dsi83_probe(struct i2c_client *client)
 	if (IS_ERR(ctx->enable_gpio))
 		return dev_err_probe(dev, PTR_ERR(ctx->enable_gpio), "failed to get enable GPIO\n");
 
-	usleep_range(10000, 11000);
+	usleep_range(340000, 350000);
 
+	dev_info(dev, "Probe: parse dt\n");
 	ret = sn65dsi83_parse_dt(ctx, model);
 	if (ret)
 		return ret;
@@ -725,6 +769,7 @@ static int sn65dsi83_probe(struct i2c_client *client)
 		goto err_remove_bridge;
 	}
 
+	dev_info(dev, "Probe finished\n");
 	return 0;
 
 err_remove_bridge:

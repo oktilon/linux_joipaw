@@ -1082,10 +1082,10 @@ static const struct panel_desc auo_g133han01 = {
 
 static const struct drm_display_mode auo_g156xtn01_mode = {
 	.clock = 76000,
-	.hdisplay = 1366,
-	.hsync_start = 1366 + 33,
-	.hsync_end = 1366 + 33 + 67,
-	.htotal = 1560,
+	.hdisplay = 1364,
+	.hsync_start = 1364 + 33,
+	.hsync_end = 1364 + 33 + 67,
+	.htotal = 1560 - 2,
 	.vdisplay = 768,
 	.vsync_start = 768 + 4,
 	.vsync_end = 768 + 4 + 4,
@@ -1102,38 +1102,6 @@ static const struct panel_desc auo_g156xtn01 = {
 	},
 	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
 	.connector_type = DRM_MODE_CONNECTOR_LVDS,
-};
-
-static const struct display_timing auo_g156xw01_timings = {
-	.pixelclock = { 60000000, 76000000, 90000000 },
-	.hactive = { 1366, 1366, 1366 },
-	.hfront_porch = { 0, 0, 0 },
-	.hback_porch = { 0, 0, 0 },
-	.hsync_len = { 80, 200, 570 },
-	.vactive = { 778, 778, 778 },
-	.vfront_porch = { 0, 0, 0 },
-	.vback_porch = { 0, 0, 0 },
-	.vsync_len = { 10, 38, 120 },
-	.flags = DISPLAY_FLAGS_DE_HIGH,
-};
-
-static const struct panel_desc auo_g156xw01 = {
-	.timings = &auo_g156xw01_timings,
-	.num_timings = 1,
-	.bpc = 8,
-	.size = {
-		.width = 344,
-		.height = 193,
-	},
-	.delay = {
-		.prepare = 50,
-		.enable = 200,
-		.disable = 110,
-		.unprepare = 1000,
-	},
-	.bus_format = MEDIA_BUS_FMT_RGB888_1X7X4_SPWG,
-	.connector_type = DRM_MODE_CONNECTOR_LVDS,
-	.bus_flags = DRM_BUS_FLAG_DE_HIGH,
 };
 
 static const struct display_timing auo_g185han01_timings = {
@@ -4272,9 +4240,6 @@ static const struct of_device_id platform_of_match[] = {
 	}, {
 		.compatible = "auo,g156xtn01",
 		.data = &auo_g156xtn01,
-	}, {
-		.compatible = "auo,g156xw01",
-		.data = &auo_g156xw01,
 	}, {
 		.compatible = "auo,g185han01",
 		.data = &auo_g185han01,
